@@ -97,6 +97,20 @@ inputs:
     default: "NOT_SET"
     required: false
 
+  # editor settings
+  SHOW_EDITORS:
+    description: "Show editors used alongside languages"
+    default: "false"
+    required: false
+  EDITOR_COUNT:
+    description: "Maximum number of editors to be shown"
+    default: "5"
+    required: false
+  IGNORED_EDITORS:
+    description: "Ignore space separated, listed editors"
+    default: ""
+    required: false
+
 runs:
   using: "docker"
   image: "dockerfile"

@@ -126,6 +126,9 @@ There are many flags that you can modify as you see fit.
 | `SHOW_MASKED_TIME`  | `false`, `true`                                                         | Adds total coding time including unclassified languages (overrides: `SHOW_TOTAL`) |
 | `STOP_AT_OTHER`     | `false`, `true`                                                         | Stop when language marked as `Other` is retrieved (overrides: `LANG_COUNT`)       |
 | `IGNORED_LANGUAGES` | <code> </code>, `Binary YAML JSON TOML`                                 | Hide languages from your stats                                                    |
+| `SHOW_EDITORS`      | `false`, `true`                                                         | Show editors used alongside languages                                             |
+| `EDITOR_COUNT`      | `5`, any plausible number                                               | Number of editors to be displayed                                                 |
+| `IGNORED_EDITORS`   | <code> </code>, `VS Code Vim Emacs`                                     | Hide editors from your stats                                                      |
 
 ### Commit Tweaks
 
@@ -180,6 +183,9 @@ jobs:
           SHOW_MASKED_TIME: false # optional
           STOP_AT_OTHER: true # optional
           IGNORED_LANGUAGES: YAML JSON TOML # optional
+          SHOW_EDITORS: true # optional
+          EDITOR_COUNT: 5 # optional
+          IGNORED_EDITORS: VS Code Vim Emacs # optional
           ### commit
           COMMIT_MESSAGE: Updated waka-readme graph with new metrics # optional
           TARGET_BRANCH: master # optional
@@ -195,17 +201,25 @@ _Rendered `markdown`:_
 
 <!-- prettier-ignore-start -->
 
-```rust
 From: 10 July 2020 - To: 06 August 2022
 
 Total Time: 1,464 hrs 54 mins
 
+Languages:
+```rust
 Python             859 hrs 29 mins >>>>>>>>>>>>>>-----------   54.68 %
 Markdown           132 hrs 33 mins >>-----------------------   08.43 %
 TeX                103 hrs 52 mins >>-----------------------   06.61 %
 HTML               94 hrs 48 mins  >>-----------------------   06.03 %
 Nim                64 hrs 31 mins  >------------------------   04.11 %
 Other              47 hrs 58 mins  >------------------------   03.05 %
+```
+
+Editors:
+```rust
+VS Code            1,200 hrs 30 mins >>>>>>>>>>>>>>>>>>>>>>>>   82.00 %
+Vim                180 hrs 15 mins  >>>>>>-------------------   12.30 %
+Emacs              83 hrs 45 mins   >>>----------------------   05.70 %
 ```
 
 <!-- prettier-ignore-end -->

@@ -150,6 +150,10 @@ class WakaInput:
     language_count: str | int = os.getenv("INPUT_LANG_COUNT") or 5
     stop_at_other: str | bool = os.getenv("INPUT_STOP_AT_OTHER") or False
     ignored_languages: str = os.getenv("INPUT_IGNORED_LANGUAGES", "")
+    # # editors support
+    show_editors: str | bool = os.getenv("INPUT_SHOW_EDITORS") or False
+    editor_count: str | int = os.getenv("INPUT_EDITOR_COUNT") or 5
+    ignored_editors: str = os.getenv("INPUT_IGNORED_EDITORS", "")
     # # optional meta
     target_branch: str = os.getenv("INPUT_TARGET_BRANCH", "NOT_SET")
     target_path: str = os.getenv("INPUT_TARGET_PATH", "NOT_SET")
@@ -176,6 +180,7 @@ class WakaInput:
             self.show_total_time = strtobool(self.show_total_time)
             self.show_masked_time = strtobool(self.show_masked_time)
             self.stop_at_other = strtobool(self.stop_at_other)
+            self.show_editors = strtobool(self.show_editors)
         except (ValueError, AttributeError) as err:
             logger.error(err)
             return False
@@ -212,6 +217,15 @@ class WakaInput:
             logger.warning("Invalid language count")
             logger.debug("Using default language count: 5")
             self.language_count = 5
+
+        try:
+            self.editor_count = int(self.editor_count)
+            if self.editor_count < -1:
+                raise ValueError
+        except ValueError:
+            logger.warning("Invalid editor count")
+            logger.debug("Using default editor count: 5")
+            self.editor_count = 5
 
         for option in (
             "target_branch",
@@ -285,74 +299,131 @@ def _extract_ignored_languages():
         yield igl
 
 
+def _extract_ignored_editors():
+    if not wk_i.ignored_editors:
+        return ""
+    temp = ""
+    for ige in wk_i.ignored_editors.strip().split():
+        if ige.startswith(('"', "'")):
+            temp = ige.lstrip('"').lstrip("'")
+            continue
+        if ige.endswith(('"', "'")):
+            ige = f"{temp} {ige.rstrip('"').rstrip("'")}"
+            temp = ""
+        yield ige
+
+
+def _generate_content_section(info_list: list[dict[str, int | float | str]], section_name: str, count: int, ignored_items: set[str], stop_at_other: bool = False, pad_len: int | None = None) -> str:
+    """Generate content section for languages or editors."""
+    if not info_list:
+        return ""
+
+    contents = ""
+    
+    # Calculate padding length if not provided
+    if pad_len is None:
+        pad_len = len(
+            max((str(item["name"]) for item in info_list), key=len)
+        )
+    
+    if count == 0 and not stop_at_other:
+        logger.debug(f"Set INPUT_{section_name.upper()}_COUNT to -1 to retrieve all {section_name} or specify a positive number (ie. above 0)")
+        return ""
+
+    logger.debug(f"Ignoring {', '.join(ignored_items)}")
+    
+    for idx, item in enumerate(info_list):
+        item_name = str(item["name"])
+        if item_name in ignored_items:
+            continue
+        item_time = str(item["text"]) if wk_i.show_time else ""
+        item_ratio = float(item["percent"])
+        item_bar = make_graph(wk_i.block_style, item_ratio, wk_i.graph_length, item_name)
+        contents += (
+            f"{item_name.ljust(pad_len)}   "
+            + f"{item_time: <16}{item_bar}   "
+            + f"{item_ratio:.2f}".zfill(5)
+            + " %\n"
+        )
+        if count == -1:
+            continue
+        if stop_at_other and (item_name == "Other"):
+            break
+        if idx + 1 >= count > 0:  # idx starts at 0
+            break
+
+    return contents
+
+
 def prep_content(stats: dict[str, Any], /):
     """WakaReadme Prepare Markdown.
 
     Prepared markdown content from the fetched statistics.
-    ```
+    Returns a dictionary with separate content parts.
     """
     logger.debug("Making contents")
-    contents = ""
-
-    # make title
+    
+    # Build header content (title and total time)
+    header_content = ""
     if wk_i.show_title:
-        contents += make_title(stats.get("start"), stats.get("end")) + "\n\n"
+        header_content += make_title(stats.get("start"), stats.get("end")) + "\n\n"
 
-    # make byline
     if wk_i.show_masked_time and (
         total_time := stats.get("human_readable_total_including_other_language")
     ):
         # overrides "human_readable_total"
-        contents += f"Total Time: {total_time}\n\n"
+        header_content += f"Total Time: {total_time}\n\n"
     elif wk_i.show_total_time and (total_time := stats.get("human_readable_total")):
-        contents += f"Total Time: {total_time}\n\n"
+        header_content += f"Total Time: {total_time}\n\n"
 
-    lang_info: list[dict[str, int | float | str]] | None = []
-
-    # Check if any language data exists
-    if not (lang_info := stats.get("languages")):
+    # Check if any data exists
+    lang_info = stats.get("languages", [])
+    editor_info = stats.get("editors", [])
+    
+    if not lang_info and not editor_info:
         logger.debug("The API data seems to be empty, please wait for a day")
-        contents += "No activity tracked"
-        return contents.rstrip("\n")
+        return {
+            "header": header_content.rstrip(),
+            "languages": "No activity tracked",
+            "editors": None
+        }
 
-    # make lang content
-    pad_len = len(
-        # comment if it feels way computationally expensive
-        max((str(lng["name"]) for lng in lang_info), key=len)
-        # and then do not for get to set `pad_len` to say 13 :)
-    )
-    language_count, stop_at_other = int(wk_i.language_count), bool(wk_i.stop_at_other)
-    if language_count == 0 and not wk_i.stop_at_other:
-        logger.debug(
-            "Set INPUT_LANG_COUNT to -1 to retrieve all language"
-            + " or specify a positive number (ie. above 0)"
-        )
-        return contents.rstrip("\n")
+    # Calculate unified padding length for consistent alignment
+    all_names = []
+    if lang_info:
+        all_names.extend(str(item["name"]) for item in lang_info)
+    if editor_info and wk_i.show_editors:
+        all_names.extend(str(item["name"]) for item in editor_info)
+    
+    unified_pad_len = len(max(all_names, key=len)) if all_names else 0
 
-    ignored_languages = set(_extract_ignored_languages())
-    logger.debug(f"Ignoring {', '.join(ignored_languages)}")
-    for idx, lang in enumerate(lang_info):
-        lang_name = str(lang["name"])
-        if lang_name in ignored_languages:
-            continue
-        lang_time = str(lang["text"]) if wk_i.show_time else ""
-        lang_ratio = float(lang["percent"])
-        lang_bar = make_graph(wk_i.block_style, lang_ratio, wk_i.graph_length, lang_name)
-        contents += (
-            f"{lang_name.ljust(pad_len)}   "
-            + f"{lang_time: <16}{lang_bar}   "
-            + f"{lang_ratio:.2f}".zfill(5)
-            + " %\n"
+    # Generate languages content
+    lang_content = None
+    if lang_info:
+        language_count = int(wk_i.language_count)
+        stop_at_other = bool(wk_i.stop_at_other)
+        ignored_languages = set(_extract_ignored_languages())
+        
+        lang_content = _generate_content_section(
+            lang_info, "lang", language_count, ignored_languages, stop_at_other, unified_pad_len
         )
-        if language_count == -1:
-            continue
-        if stop_at_other and (lang_name == "Other"):
-            break
-        if idx + 1 >= language_count > 0:  # idx starts at 0
-            break
+
+    # Generate editors content
+    editor_content = None
+    if editor_info and wk_i.show_editors:
+        editor_count = int(wk_i.editor_count)
+        ignored_editors = set(_extract_ignored_editors())
+        
+        editor_content = _generate_content_section(
+            editor_info, "editor", editor_count, ignored_editors, False, unified_pad_len
+        )
 
     logger.debug("Contents were made\n")
-    return contents.rstrip("\n")
+    return {
+        "header": header_content.rstrip(),
+        "languages": lang_content.rstrip() if lang_content else None,
+        "editors": editor_content.rstrip() if editor_content else None
+    }
 
 
 def fetch_stats():
@@ -411,15 +482,40 @@ def churn(old_readme: str, /):
         sys.exit(1)
     # preparing contents
     try:
-        generated_content = prep_content(waka_stats)
+        content_parts = prep_content(waka_stats)
     except (AttributeError, KeyError, ValueError) as err:
         logger.error(f"Unable to read API data | {err}\n")
         sys.exit(1)
-    print(generated_content, "\n", sep="")
+    
+    # Build the final markdown content
+    final_content = wk_i.start_comment + "\n"
+    
+    # Add Languages section with markdown header
+    if content_parts["languages"]:
+        final_content += "### Languages\n"
+        final_content += f"```{wk_i.code_lang}\n"
+        final_content += content_parts["languages"] + "\n"
+        final_content += "```\n\n"
+    
+    # Add Editors section with markdown header
+    if content_parts["editors"]:
+        final_content += "### Editors\n"
+        final_content += f"```{wk_i.code_lang}\n"
+        final_content += content_parts["editors"] + "\n"
+        final_content += "```\n\n"
+    
+    # Add header (title, total time) at the bottom
+    if content_parts["header"]:
+        final_content += content_parts["header"] + "\n"
+    
+    final_content += wk_i.end_comment
+    
+    print(final_content, "\n", sep="")
+    
     # substituting old contents
     new_readme = re.sub(
         pattern=wk_i.waka_block_pattern,
-        repl=f"{wk_i.start_comment}\n\n```{wk_i.code_lang}\n{generated_content}\n```\n\n{wk_i.end_comment}",
+        repl=final_content,
         string=old_readme,
     )
     if len(sys.argv) == 2 and sys.argv[1] == "--dev":
