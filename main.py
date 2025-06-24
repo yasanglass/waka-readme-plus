@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
 import logging as logger
+import math
 import os
 from random import SystemRandom
 import re
@@ -342,7 +343,7 @@ def _generate_content_section(info_list: list[dict[str, int | float | str]], sec
         contents += (
             f"{item_name.ljust(pad_len)}   "
             + f"{item_time: <16}{item_bar}   "
-            + f"{item_ratio:.2f}".zfill(5)
+            + f"{math.ceil(item_ratio):02d}"
             + " %\n"
         )
         if count == -1:
